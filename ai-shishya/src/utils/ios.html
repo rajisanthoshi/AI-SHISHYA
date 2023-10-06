@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>webgl-viewer demo</title>
+    <meta charset="utf-8">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <script src="system-production.js"></script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+    <style>
+        .thumb {
+            height: 75px;
+            border: 1px solid #000;
+            margin: 10px 5px 0 0;
+        }
+
+        #progress_bar {
+            margin: 10px 0;
+            padding: 3px;
+            border: 1px solid #000;
+            font-size: 14px;
+            clear: both;
+            opacity: 0;
+            -moz-transition: opacity 1s linear;
+            -o-transition: opacity 1s linear;
+            -webkit-transition: opacity 1s linear;
+        }
+
+            #progress_bar.loading {
+                opacity: 1.0;
+            }
+
+            #progress_bar .percent {
+                background-color: #99ccff;
+                height: auto;
+                width: 0;
+            }
+    </style>
+    <script>
+
+        let viewer;
+        var trbfilepath = '';
+		let viewhandler,webGlViewer,trimbimPlugin,markupPlugin,identifierBuilder,three,connectIdentifier;
+        let identifierResolvers = new Object;
+
+		Promise.all([System.import("WebglViewer.js"), System.import("TrimbimPlugin.js"), System.import("MarkupPlugin.js"), System.import("viewhandler.js"), System.import("ConnectIdentifier.js"),System.import("three.min.js")]).then((modules) => {
+		    webGlViewer = new modules[0].WebglViewer();
+            trimbimPlugin = new modules[1].TrimbimPlugin();
+            markupPlugin = new modules[2].MarkupPlugin();   
+            viewhandler = modules[3];
+            identifierBuilder = new modules[4].ConnectIdentifierBuilder;          
+            three = modules[5];        
+			viewer = webGlViewer.addPlugin(trimbimPlugin).addPlugin(markupPlugin);document.body.appendChild(viewer);
+			window.webkit.messageHandlers.onViewerLoaded.postMessage('');
+			webGlViewer.addEventListener("pick", e => onPick(e));
+        });
+
+		async function onPick(e)
+        {
+            var identifier = await getPersistentId(e.detail.modelId,e.detail.id);
+			if(identifier)
+			{
+				var payload = new Object;
+				payload['id'] = identifier;
+				payload['modelId'] = e.detail.modelId;
+				window.webkit.messageHandlers.onPick.postMessage(JSON.stringify(payload));
+			}
+			else
+				window.webkit.messageHandlers.onPick.postMessage('');
+
+        }
+		function loadModels(filepaths,payload) {
+            var param = new Object;
+			 param['modelId'] = payload.modelId;
+			 param['transform'] = payload.transform;
+             viewer.load(filepaths,param);
+		}
+		function unLoadModels(fileId,payload) {
+             viewer.unload(fileId, { fitToView: false });
+		}       
+        function unLoadModels(fileId,payload) {
+             viewer.unload(fileId, { fitToView: false });
+		}
+
+		function setViewPreset(presetType)
+		{
+			webGlViewer.fitToView({ viewPreset: presetType });		
+		}
+		function hideSelectedObjects()
+		{			
+            setSelectedObjectsVisibility(false);
+		}
+		function showAll()
+		{			
+            setAllObjectsVisibility(true);
+			viewer.selection.clear();
+		}
+		function showOnlySelected()
+		{
+			setAllObjectsVisibility(false);
+            setSelectedObjectsVisibility(true);
+		}
+		function zoomToSelected()
+		{
+			const selection = viewer.selection;
+            let target;    
+            const modelIds = Array.from(selection.keys());
+            if (modelIds.length > 1) {
+            target = { modelIds }; // WebGlViewer only supports zooming to selection in 1 model
+            } else if (modelIds.length === 1) {
+            target = { modelIds, entityIds: selection.get(modelIds[0]) };
+            }
+
+            if (target) {
+                webGlViewer.fitToView(target);	
+            }
+		}
+		function setLookAround(isLookAround)
+		{
+			var orbitTool = viewer.tools.orbit;
+            var panTool = viewer.tools.pan;
+            var flyTool = viewer.tools.fly;
+			console.log('orbit - ' + orbitTool +' pan- ' + panTool+' fly-' + flyTool);
+			if(isLookAround)
+			{
+				flyTool.enabled = true;
+				flyTool.mouseButton = MouseButton.left;
+				flyTool.touchCount = 1;
+
+				orbitTool.enabled = false;
+
+				panTool.enabled = false;
+			}
+			else
+			{
+				flyTool.enabled = true;
+				flyTool.mouseButton = MouseButton.right;
+				flyTool.touchCount = 3;
+
+				orbitTool.enabled = true;
+				orbitTool.mouseButton = MouseButton.left;
+				orbitTool.touchCount = 1;
+
+				panTool.enabled = true;
+				panTool.mouseButton = MouseButton.middle;
+				panTool.touchCount = 2;
+			}
+		}
+
+		function setAllObjectsVisibility(isVisible){
+            var modelIds = trimbimPlugin.getModelIds();
+            for(const id of modelIds){
+                const model = trimbimPlugin.getModel(id);
+                model.setVisibility(isVisible);
+            }
+        }
+
+        function setSelectedObjectsVisibility(isVisible)
+        {
+            var selectedItems = viewer.selection;
+            for(const modelId of selectedItems.keys())
+            {
+                var model = trimbimPlugin.getModel(modelId);
+                model.setVisibility(isVisible,selectedItems.get(modelId));
+                if(!isVisible)
+					viewer.selection.clear();
+            }
+        }
+		
+        function getSelectedEntities()
+        {
+            var selectedPromise = new Promise(async function(resolve,reject) 
+            {
+                var selectedEntities = [];
+                try
+                {          
+                    var selectedItems = viewer.selection;
+                    for(const modelId of selectedItems.keys())
+                    {
+                        for(const id of selectedItems.get(modelId))
+                        {
+                            var persistantId = await getPersistentId(modelId,id);
+                            selectedEntities.push({id:persistantId,modelId:modelId});
+                        }
+                    }
+                }
+                catch(e) {}
+                resolve(selectedEntities);
+            });
+            selectedPromise.then((result) => {
+                window.webkit.messageHandlers.SelectedEntitiesCallback.postMessage(JSON.stringify(result));
+            });
+        }
+
+        function setStateForEntities(entityInfoJson,state)
+        {
+            var setStatePromise = new Promise(async function(resolve,reject) {                
+                try
+                {
+                    var entityInfo = JSON.parse(entityInfoJson);
+                    for(var entity of entityInfo)
+                    {
+                        var modelId = entity['modelId'];
+                        var entityIds = await getEntityIds(modelId,entity['id']);
+                        switch(state)
+                        {
+                            case "selected":
+                                viewer.selection.add(modelId,entityIds);
+                                break;  
+                            case "none":
+                                var model = trimbimPlugin.getModel(modelId);
+                                model.setVisibility(false,entityIds);
+                                viewer.selection.subtract(modelId,entityIds);
+                                break;
+                            case "visible":
+                                var model = trimbimPlugin.getModel(modelId);
+                                model.setVisibility(true,entityIds);
+                                viewer.selection.subtract(modelId,entityIds);
+                                break;
+
+                        }
+                    }
+                    resolve('success');
+                }
+                catch(e) { reject(e); }
+            });
+            setStatePromise.then((result) => console.log(result));
+        }
+        
+        function getEntityTitle(entityJson)
+        {
+            var entityInfoPromise = new Promise(async function(resolve,reject) {
+                var entityInfo = new Object;
+                try
+                {
+                    var entity = JSON.parse(entityJson);
+                    var modelId = entity['modelId'];
+                    var model = trimbimPlugin.getModel('KkIKc8T6htU.trb');
+                    var entityIds = await getEntityIds(modelId,entity['id']);
+                    var info = await model.getEntityInfo(entityIds[0]);
+                    entityInfo.entity = info.entity;
+                    entityInfo.title = info.title;
+                }
+                catch(e) { console.log(e); }
+                console.log("info" +entityInfo);
+                resolve(entityInfo);
+            });
+            entityInfoPromise.then((entityInfo) => {
+                var title = "";
+                try
+                {
+                    if (entityInfo) {
+                        if (entityInfo.product) {
+                            title = entityInfo.product.name || entityInfo.product.objectType;
+                        }
+                        if (!title && entityInfo.entity) {
+                            title = entityInfo.entity.class;
+                        }
+                    }
+                }  
+                catch(e) { console.log(e); }
+                window.webkit.messageHandlers.EntityTitleCallback.postMessage(title);
+            });
+        }
+
+        function getEntityInfo(entityJson)
+        {
+            var entityInfoPromise = new Promise(async function(resolve,reject) {
+                var entityInfo = [];
+                try
+                {
+                    var entity = JSON.parse(entityJson);
+                    var modelId = entity['modelId'];
+                    var entityIds = await getEntityIds(modelId,entity['id']);
+                    var model = trimbimPlugin.getModel(modelId);
+                    var info = await model.getEntityInfo(entityIds[0]);
+                    entityInfo.push(...info.properties);
+                }
+                catch(e) { console.log(e); }
+                resolve(entityInfo);
+            });
+            entityInfoPromise.then((entityInfo) => {
+                var propertySets = [];
+                try
+                {
+                    for(var category of entityInfo)
+                    {
+                        for(var property of category.properties)
+                        {
+                            if(property !== undefined)
+                            {
+                                var propertySet = [];
+                                propertySet.push((category.name ? category.name + '.' : '') + property.name);
+                                propertySet.push(property.value.toString());
+                                propertySet.push(property.type.toString());
+                                propertySets.push(propertySet);
+                            }
+                        }
+                    }
+                }  
+                catch(e) { console.log(e); }
+                window.webkit.messageHandlers.EntityInfoCallback.postMessage(JSON.stringify(propertySets));
+            });
+        }
+
+		function setSelectedObjectsTransparency(transparency)
+        {            
+            var selectedItems = viewer.selection;
+            for(const modelId of selectedItems.keys())
+            {
+                var model = trimbimPlugin.getModel(modelId);
+                model.setMaterial({opacity:transparency},selectedItems.get(modelId));
+            }
+        }
+		async function setSelectedObjectsColor(color)
+        {            
+            var selectedItems = viewer.selection;
+			var objOpacity;
+            for(const modelId of selectedItems.keys())
+            {
+                var model = trimbimPlugin.getModel(modelId);
+                for(var id of selectedItems.get(modelId))
+                {
+                    var material = await model.getMaterials([id]);
+                    if(material[0])
+                        objOpacity = material[0].opacity;
+                    var colorParam = new Object;
+                    colorParam['color'] = color;
+                    if(objOpacity)
+                        colorParam['opacity'] = objOpacity;
+                    model.setMaterial(colorParam,[id]);
+                }
+            }
+        }
+		function resetAllColors()
+        {            
+            var modelIds = trimbimPlugin.getModelIds();
+            for(const modelId of modelIds)
+			{
+                var model = trimbimPlugin.getModel(modelId);
+                model.resetMaterial();
+            }
+        }
+		function resetSelectedColors()
+		{
+            var modelIds = trimbimPlugin.getModelIds();
+            for(const modelId of modelIds)
+			{
+                var model = trimbimPlugin.getModel(modelId);
+                model.resetMaterial(viewer.selection.get(modelId));
+            }
+        }
+		function updateModelVisibility(modelId,isVisible)
+		{
+			var model = trimbimPlugin.getModel(modelId);
+            model.setVisibility(isVisible);			
+			if(!isVisible)
+			{
+                var entityIds = viewer.selection.get(modelId);
+                viewer.selection.subtract(modelId,entityIds);
+			}
+		}
+        function setClipPlaneMode()
+        {
+            viewer.activeTool = "clipPlanes";  
+		}
+		function getSelectedObjectsColors()
+		{
+			var colorPromise = getSelectedObjectsColorsAsync();
+            colorPromise.then((value) => {
+				window.webkit.messageHandlers.SelectedObjectsColorCallback.postMessage(JSON.stringify(value));
+             });
+		}
+		async function getSelectedObjectsColorsAsync()
+        {
+            var colorList = [];
+            try
+            {
+                var selectedItems = viewer.selection;
+                for(const modelId of selectedItems.keys())
+                {
+                    var model = trimbimPlugin.getModel(modelId);
+                    for(var id of selectedItems.get(modelId))
+                    {
+                        var material = await model.getMaterials([id]);
+                        if(material[0])
+                        {
+                            var color = colorToThreeJS(material[0].color);
+                            var persistantId = await getPersistentId(modelId,id);
+                            var colorArray = [color.r,color.g,color.b,material[0].opacity];
+                            var colorObj = {id:persistantId,color:colorArray};
+                            colorList.push(colorObj);
+                        }
+                    }
+                }
+            }
+            catch(e) { 
+                console.log(e);
+            }
+			return colorList;
+        }
+		function colorToThreeJS(color) {
+            const c = color;            
+            if (typeof color === "number" || typeof color === "string")
+                return new three.Color(color);
+            else if (c.r !== undefined && c.g !== undefined && c.b !== undefined)
+                return new three.Color(c.r, c.g, c.b);
+        }
+		async function getPersistentId(modelId, entityId)
+        {
+            var globalId;
+            if (trimbimPlugin && modelId) {
+                const model = trimbimPlugin.getModel(modelId);
+                if (model) {
+                    var entityIds = [entityId];
+                    const entities = await model.getEntities(entityIds);
+                    const boundingBoxes = await model.getUntransformedBoundingBoxes(entityIds);
+                    
+                    const entity = entities[0];
+
+                    try {
+                        var identifier = identifierBuilder.tryGetPersistentIdentifier(entity);
+
+                    } catch(e) {  }
+                    try{
+                        if (identifier === undefined) {
+                            identifier = identifierBuilder.tryGetNonPersistentIdentifier(entity, boundingBoxes[0]);
+                        }
+                    }
+                    catch(e) { }
+                    if(identifier)
+                    {
+                        globalId = identifier;
+                    }
+                    else
+                    {
+                        globalId = '';
+                        console.log(`Unable to get persistent identifier for the following entitiIds: ${entity.id.toString()}`);
+                    }
+                }
+            }
+
+            return globalId;
+        };
+
+		async function getEntityIds(modelId, persistantId)
+        {
+            var entityIds = [];
+            var identifierResolver = await getIdentifierResolver(modelId,1.0);
+            if (modelId && identifierResolvers) {
+                // persistent ID
+                const entityId = identifierResolver.tryGetEntityFromPersistentIdentifier(persistantId);
+                if (entityId !== undefined) {
+                    entityIds.push(entityId);
+                } 
+                else 
+                {
+                    // non-persistent ID
+                    const nonPersistentEntityIdIDs = identifierResolver.tryGetEntityFromNonPersistentIdentifier(persistantId);
+                    if (nonPersistentEntityIdIDs.length) {
+                    entityIds.push(...nonPersistentEntityIdIDs);
+
+                    if (nonPersistentEntityIdIDs.length > 1) {
+                        console.log(`Multiple non persistent IDs ([${entityIds.join(", ")}]) were found for identifier: ${persistantId}`);
+                    }
+
+                    } else {
+                    console.log(`"getEntityIds(): fallback option reached with the following objectIds: [${sourceIds.join(" | ")}]`);
+                    // Putting back the this fallback option for now.
+                    // TODO: remove temporary fallback option to support the old way.
+                    var model = trimbimPlugin.getModel(modelId);
+                    return model.guidsToEntityIds(sourceIds);
+                    }
+                }
+            }
+            return entityIds;
+        };
+        async function getIdentifierResolver(modelId, modelScaling)
+        {
+            if(!identifierResolvers[modelId])
+            {
+                const model = trimbimPlugin.getModel(modelId);
+                const entityIds = (await model.query({ find: {} })).output.find.entityIds;
+                const entities = await model.getEntities(entityIds);
+                const boundingBoxes = await model.getUntransformedBoundingBoxes(entityIds);
+                // MVC uses this value too, thus it should work for most models.
+                const tolerance = 1e-3;
+                identifierResolvers[modelId] = new connectIdentifier.ConnectIdentifierResolver(entities, boundingBoxes, tolerance, modelScaling);
+            }
+            return Promise.resolve(identifierResolvers[modelId]);
+        };
+		const MouseButton = {
+            left : 0,
+            middle : 1,
+            right : 2
+        }
+    </script>
+</body>
+</html>

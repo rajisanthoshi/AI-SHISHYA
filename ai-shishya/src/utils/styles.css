@@ -1,0 +1,28 @@
+body,#container {
+    height: 100vh;
+    margin: 0;
+    font-family: 'Arial', sans-serif;
+    font-size: 13px;
+}
+
+button {
+    background-color: #00437b;
+    border: none;
+    color: white;
+    padding: 5px 8px;
+    margin: 5px;
+    font-family: 'Arial', sans-serif;
+    font-size: 13px;
+}
+
+button:hover {
+    background-color: #555;
+}
+
+.controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    float: left;
+    z-index: 99
+}

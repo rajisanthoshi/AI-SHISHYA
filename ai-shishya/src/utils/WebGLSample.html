@@ -1,0 +1,1335 @@
+﻿<!doctype html>
+<html lang="en">
+
+<head>
+    <title>webgl-viewer demo</title>
+    <meta charset="utf-8">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <script src="system-production.js"></script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+
+<body bgcolor="#FFFFFF">
+    <style>
+        .thumb {
+            height: 75px;
+            border: 1px solid #000;
+            margin: 10px 5px 0 0;
+        }
+
+        #progress_bar {
+            margin: 10px 0;
+            padding: 3px;
+            border: 1px solid #000;
+            font-size: 14px;
+            clear: both;
+            opacity: 0;
+            -moz-transition: opacity 1s linear;
+            -o-transition: opacity 1s linear;
+            -webkit-transition: opacity 1s linear;
+        }
+
+        #progress_bar.loading {
+            opacity: 1.0;
+        }
+
+        #progress_bar .percent {
+            background-color: #99ccff;
+            height: auto;
+            width: 0;
+        }
+    </style>
+
+    <div id="container"></div>
+    <!--Trb Path: <input type="text" id="trbpath" name="trbpath" value="i"><br>-->
+    <!--  <button type="button"  onclick="Open3DViewer()">Click Me!</button> -->
+    <div id="progress_bar">
+        <div class="percent">0%</div>
+    </div>
+    <div class="controls">
+        <br>
+        <!-- <button type="button" onclick="showAll()">Add links</button>
+        <button type="button" onclick="ortho()">clear links</button>
+        <button type="button" onclick="lookAround()">Look Around</button>
+        <button type="button" onclick="hideObject()">HideObject</button>
+        <button type="button" onclick="selectTool('cloudMarkup')">CloudMarkup</button>
+        <button type="button" onclick="selectTool('measurement')">Measurement</button>
+        <button type="button" onclick="setMarkupColor()">MarkupColor</button>
+        <button type="button" onclick="removeAll()">Clear</button>
+        <button type="button" onclick="hideRest()">Hide rest</button>
+        <button type="button" onclick="zoomToFit()">Zoom to obj</button>
+        <button type="button" onclick="setTransparency()">Transparent</button>
+        <button type="button" onclick="resetColor()">Reset Color</button>
+        <button type="button" onclick="clipPlane()">clip plane</button>
+        <button type="button" onclick="loadView()">load view</button> -->
+        <!-- <button type="button" onclick="Load()">Load Model</button>
+        <button type="button" onclick="Unload()">Un load Model</button>
+        <button type="button" onclick="enableHierrarchySelection(true)">EnableAssembly</button>
+        <button type="button" onclick="enableHierrarchySelection(false)">DisableAssembly</button>
+        <button id="remove" style="display: none" type="button" onclick="remove()">Remove</button> --> 
+        <input id="key" placeholder="Enter key" ></input>
+        <input id="value" placeholder="Enter value"></input>
+        <button type="button" onclick="Search()">Search Model</button>
+
+    </div>
+
+    <script type="module">
+        let viewer, clipPlaneId = null;
+        var trbfilepath = '';
+        let viewhandler, webGlViewer,webGlViewerModule, trimbimPlugin, markupPlugin, identifierBuilder, connectIdentifier, three, iconsPlugin;
+        var hierarchySelection;
+        let markupPluginNamespace;
+        let identifierResolvers = new Map();
+        let objectLinkIcons = [], iconId = 0, objectLinkIconMap = [], modelIds = [];
+        let linkPath = "icon.png";
+        let trimbimModule;
+        let activeTextMakrup = null;
+
+        Promise.all([
+                        System.import("webgl-viewer.js"), 
+                        System.import("webgl-viewer-plugin-trimbim.js"), 
+                        System.import("webgl-viewer-plugin-markup.js"), 
+                        System.import("webgl_viewer_connect_helpers.js"), 
+                        System.import("ConnectIdentifier.js"),
+                        System.import("three.mjs"), 
+                        System.import("webgl-viewer-plugin-icons.js"), 
+                        System.import("HierarchySelection.js")
+                    ]).then((modules) => {
+            const settings = {
+                animationTime: 500,
+                xrCompatible: false
+            };
+            webGlViewer = new modules[0].WebglViewer();
+            trimbimPlugin = new modules[1].TrimbimPlugin();
+            trimbimModule = modules[1];
+            markupPlugin = new modules[2].MarkupPlugin();
+            markupPluginNamespace = modules[2];      
+            viewhandler = modules[3];
+            identifierBuilder = new modules[4].ConnectIdentifierBuilder;
+            connectIdentifier = modules[4];
+            webGlViewerModule = modules[0];  
+            iconsPlugin = new modules[6].IconsPlugin();
+            viewer = webGlViewer.addPlugin(trimbimPlugin).addPlugin(markupPlugin).addPlugin(iconsPlugin);
+            viewhandler.configure(webGlViewer, markupPlugin, trimbimPlugin);
+            document.body.appendChild(viewer);
+            hierarchySelection = new modules[7].HierarchySelection(viewer, [viewer.tools.selection, viewer.tools.areaSelection]);
+            hierarchySelection.hierarchyType = trimbimModule.HierarchyType.ElementAssembly
+            viewer.tools.picking.enabled = true;
+			//webGlBridge.onViewerLoaded();
+            webGlViewer.addEventListener("pick", e => onPick(e));
+            webGlViewer.addEventListener("selection", e => onSelect(e));
+            webGlViewer.addEventListener("active-tool-changed", e => onToolChanged(e));
+            webGlViewer.addEventListener("clipplaneadded", e => onClipPlaneAdded(e));
+            webGlViewer.addEventListener("markupadded", e => onMarkupAdded(e));
+            webGlViewer.addEventListener("markupmodified", e => onMarkupModified(e));
+            viewer.tools.textMarkup.getTextCallback = (markup) => {  
+                if (!activeTextMarkup && !supressTextCallBack){
+                    activeTextMarkup = markup;
+                   // webGlBridge.TextMarkupFinishedCallback();       
+                }
+                return "";
+            };    
+             console.log(modules);
+           // viewhandler = modules[3];
+            //identifierBuilder = new modules[4].ConnectIdentifierBuilder();
+            //connectIdentifier = modules[4];
+            // three = modules[5];
+            // iconsPlugin = new modules[6].IconsPlugin();
+            // viewer = webGlViewer.addPlugin(trimbimPlugin);
+            // viewer.addPlugin(markupPlugin);
+            // viewer.addPlugin(iconsPlugin);
+            // console.log(viewer.modelId);
+            // console.log("Handler:",viewhandler);
+            // viewhandler.configure(webGlViewer, markupPlugin, trimbimPlugin);
+            Open3DViewer();
+            // document.getElementById("container").appendChild(viewer);
+            // console.log('webgl' + webGlViewer + 'markup' + markupPlugin + 'trimbim' + trimbimPlugin);
+            // viewer.tools.selection.mode = "addSubtract";
+            // viewer.tools.areaSelection.mode = "addSubtract";
+            // viewer.tools.picking.enabled = true;
+            // hierarchySelection = new modules[7].HierarchySelection(viewer, [viewer.tools.selection, viewer.tools.areaSelection]);
+            // hierarchySelection.hierarchyType = trimbimModule.HierarchyType.ElementAssembly;
+            // webGlViewer.addEventListener("selection", e => onSelect(e));
+            // webGlViewer.addEventListener("pick", e => onPick(e));
+            // // webGlViewer.addEventListener("active-tool-changed", e => onToolChanged(e));
+            // webGlViewer.addEventListener("dragstart", e => onDragStart(e));
+            // webGlViewer.addEventListener("clipplaneadded", e => onClipPlaneAdded(e));
+            // webGlViewer.addEventListener("markupmodified", e => onMarkupModified(e));
+        });
+
+
+        // window.showAll = async () => {
+        //     //viewhandler.addObjectLinks('cH87PAyGfgU.trb', [{ icon: "./icon.png", entityId: entityId[0] }, { icon: "./icon.png", entityId: 13234, iconId: 13234 }]);
+        //     addObjectLinks('{ "ids": ["1KBfeK003na34qCJ8pD30o","1KBfeK004Ge34qCJ8pD30o"],"modelId": "cH87PAyGfgU" } ');
+        //     zoomToObjects('[{ "ids": ["1KBfeK003na34qCJ8pD30o","1KBfeK004Ge34qCJ8pD30o"],"modelId": "cH87PAyGfgU" }] ');
+        //     // getVisibleEntities();
+        //     // //getAllGlobalIds();
+        //     // zoomToObjects('[ { "ids": ["1KBfeK003na34qCJ8pD30o","1KBfeK004Ge34qCJ8pD30o"],"modelId": "cH87PAyGfgU" } ]');
+        // }
+
+        // window.ortho = async () => {
+        //     await clearObjectLinks();
+        // }
+        // window.setMarkupColor = () =>
+        // {
+        //     var color = new webGlViewerModule.Color(1,0,0);
+        //     markupPlugin.settings.color = color;
+        //     markupPlugin.colorSelectedMarkups(color);
+        // }
+        // window.loadView = async () => {
+        //     await getIdentifierResolver('cH87PAyGfgU', 1.0);
+        //     viewhandler.loadViewToWebglViewer("./view.json", identifierResolvers);
+        // }
+
+        // function onMarkupModified(e) {
+        //     console.log(e);
+        // }
+
+        // function onToolChanged(e) {
+        //     console.log(webGlViewer.activeTool);
+        // }
+
+        function onSelect(e) {
+            var selection = new Object();
+            var markupObjs = markupPlugin.getMarkups();
+            var selectedMarkups = markupObjs.filter(markup => markup.id === markupObjs[0].id);
+            var selectionlookup = viewer.selection.get("markup");
+            //console.log(selectedMarkups[0].text);
+            var markups = selectionlookup;
+            if (markups != null) {
+                selection.Markups = markups.length;
+            }
+            selection.Objects = e.detail.count - selection.Markups;
+        }
+
+        async function onPick(e) {
+            var selectionlookup = viewer.selection.get();
+            console.log("-------",viewer.camera);
+            console.log("-------",viewer.selectionlookup);
+            if (e.detail.modelId && !e.detail.modelId.toLowerCase().endsWith(".trb")) {
+                if (e.detail.modelId === "clipPlane") {
+                    document.getElementById("remove").style = "display: flex";
+                    clipPlaneId = e.detail.id;
+                    viewer.tools.clipPlanes.removeById(clipPlaneId);
+                    return;
+                }
+                if (e.detail.modelId === "icons") {
+                    if (e.detail.childrenIds.length === 1) {
+                        const index = objectLinkIconMap.findIndex(x => x.iconId === e.detail.childrenIds[0]);
+                        if (index !== -1) {
+                            var item = objectLinkIconMap[index];
+                            var entityId = await getPersistentId(item.modelId, item.entityId);
+                            console.log({ modelId: item.modelId, ids: [entityId] });
+                        }
+
+                    }
+                    else {
+                        var target = new Map();
+                        for (var id of e.detail.childrenIds) {
+                            const index = objectLinkIconMap.findIndex(x => x.iconId === id);
+                            if (index !== -1) {
+                                var item = objectLinkIconMap[index];
+                                if (target.has(item.modelId)) {
+                                    target.set(item.modelId, [...target.get(item.modelId), item.entityId]);
+                                }
+                                else {
+                                    target.set(item.modelId, [item.entityId]);
+                                }
+                            }
+                        }
+                        zoomToSelection(target);
+                    }
+                    return;
+                }
+            }
+            if (!e.detail.id) {
+                viewer.selection.clear();
+            }
+            try
+            {
+                var json = JSON.stringify(e.detail);
+                var idArray = [e.detail.id];
+                var identifier = await getPersistentId(e.detail.modelId, e.detail.id);
+                if (!identifier)
+                    console.log('dd');
+                console.log(json + "iden " + identifier);
+            }
+            catch(e){
+                console.log(e);
+            }
+        }
+
+        // function onClipPlaneAdded(e) {
+        //     const clipPlane = e.detail;
+        //     console.log(clipPlane);
+        //     clipPlane.makeVertical();
+        // }
+
+        // async function setCamera(camera) {
+        //     if (camera.position) viewer.camera.position = camera.position;
+        //     if (camera.quaternion) viewer.camera.quaternion = camera.quaternion;
+        //     if (camera.rotation) viewer.camera.rotation = camera.rotation;
+        //     if (camera.projectionType) await viewer.camera.setProjectionType(camera.projectionType);
+        //     if (camera.fieldOfView) viewer.camera.fieldOfView = camera.fieldOfView;
+        //     if (camera.orthoSize) viewer.camera.orthoSize = camera.orthoSize;
+        // }
+        // window.enableHierrarchySelection = (isEnabled) => 
+        // {
+        //     hierarchySelection.enabled = isEnabled;
+        // }
+        // window.remove = () => {
+        //     var tools = viewer.tools;
+        //     document.getElementById("remove").style = "display: none";
+        // }
+
+        // window.hideRest = () => {
+        //     setAllObjectsVisibility(false);
+        //     setSelectedObjectsVisibility(true);
+        // }
+
+        async function getAllGlobalIds() {
+            var globalIdPromise = new Promise(async function (resolve, reject) {
+                let globalIdSets = [];
+                try {
+                    for (let modelId of modelIds) {
+                        let globalIds = [];
+                        let idRes = await getIdentifierResolver(modelId, 1.0);
+                        globalIds.push(...idRes.entitiesByIfcGuids.keys());
+                        globalIdSets.push({ modelId: modelId, ids: globalIds });
+                    }
+                }
+                catch (e) { }
+                resolve(globalIdSets);
+            });
+            globalIdPromise.then(globalIdSets => {
+                console.log(globalIdSets);
+            });
+        }
+
+        async function zoomToObjects(entityArrayJson) {
+            let selectionDict = new Map();
+            let entityArray = JSON.parse(entityArrayJson);
+            for (let entity of entityArray) {
+                let modelId = entity['modelId'];
+                let ids = entity["ids"];
+                let model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                let idRes = await getIdentifierResolver(modelId, 1.0);
+                let entityIds = await viewhandler.getEntityIds(model, ids, idRes);
+                selectionDict.set(modelId, entityIds);
+            }
+            zoomToSelection(selectionDict);
+        }
+
+        function zoomToSelection(selectionDict) {
+            let target = new Map();
+            const modelIds = Array.from(selectionDict.keys());
+
+            for (const modelId of modelIds) {
+                target.set(modelId, selectionDict.get(modelId));
+            }
+
+            if (target && target.size > 0) {
+                viewer.camera.fitToView({ models: target });
+            }
+            else {
+                viewer.camera.fitToView();
+            }
+        }
+
+        function addObjectLinks(entityJson) {
+            var addObjectLinksPromise = new Promise(async function (resolve, reject) {
+                try {
+                    var totalEntityIds = new Map();
+                    var entity = JSON.parse(entityJson);
+
+                    var modelId = entity['modelId'];
+                    var entityIds = await getAllEntityIds(modelId, entity['ids']);
+                    var iconArray = [];
+                    const visibleEntityIds = await getVisibleEntityIds(modelId);
+
+                    for (var entityId of entityIds) {
+                        if (visibleEntityIds.includes(entityId)) {
+                            var iconObject = { icon: linkPath, entityIds: [entityId], iconId: generateNextId(), iconSize: 36 };
+                            objectLinkIconMap.push({ modelId: modelId, entityId: entityId, iconId: iconObject.iconId });
+                            iconArray.push(iconObject);
+                        }
+                    }
+                    var icons = await viewhandler.createObjectLinks(modelId, iconArray);
+                    viewhandler.addIcons(icons);
+                    objectLinkIcons.push(...icons);
+
+
+                    resolve();
+                }
+                catch (e) { console.log(e); }
+            });
+            addObjectLinksPromise.then(res => {
+                console.log(objectLinkIcons);
+            });
+        }
+
+        function getVisibleEntityIds(modelId, isVisible) {
+            var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+            if (model)
+                return model.getVisibleEntityIds(isVisible);
+        }
+
+        async function clearObjectLinks() {
+            await viewhandler.removeIcon(objectLinkIcons);
+            resetIdGenerator();
+            objectLinkIcons = [];
+            objectLinkIconMap = [];
+        }
+
+        function generateNextId() {
+            return ++iconId;
+        }
+
+        function resetIdGenerator() {
+            iconId = 0;
+        }
+
+        window.hideObject = async () => {
+            await setSelectedObjectsVisibility(false);
+        }
+        window.Search = async () => {
+            await searchByKeyValue();
+        }
+
+
+        window.zoomToFit = () => {
+            const selection = viewer.selection;
+            zoomToSelection(selection);
+        }
+
+        window.setTransparency = () => {
+            //setColorForAllObjects('{"r":"1","g":"1","b":"0","a":"0.5"}');
+            setObjectsFullColor('[{ "colors": [{"id":"1KBfeK003na34qCJ8pD30o","color":{"r":"1","g":"1","b":"0","a":"0.5"}}, {"id":"1KBfeK004Ge34qCJ8pD30o","color":{"r":"1","g":"1","b":"0","a":"0.5"}}], "modelId": "cH87PAyGfgU" }]');
+        }
+
+        window.resetColor = async () => {
+            // var color = getSelectedObjectsColors();
+            // console.log(color);
+            resetMaterial();
+            clearObjectLinks();
+            //updateModelVisibility("cH87PAyGfgU.trb",false);
+            var sel = viewer.selection.get();
+            // getSelectedEntities();    
+            showOnly('[ { "ids": ["1KBfeK003na34qCJ8pD30o","1KBfeK004Ge34qCJ8pD30o"],"modelId": "cH87PAyGfgU" } ]', 'selected')
+            //setStateForEntities('[\n  {\n    \"id\": \"1KBfeK004Ge34qCJ8pD30o\",\n    \"modelId\": \"cH87PAyGfgU.trb\"\n  }\n]', 'selected');
+            //setStateForEntities('[{"id":"1KBfeK004Ge34qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK003na34qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK003nYZ4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK005uU34qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK004Sbp4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK004MJp4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK004T1J4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK003nUp4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK004Pp34qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK004VJZ4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"},{"id":"1KBfeK004ZCp4qCJ8pD30o","modelId":"cH87PAyGfgU.trb"}]',
+            //    'selected');
+            getEntityInfo('{"id":"1KBfeK004Ge34qCJ8pD30o","modelId":"cH87PAyGfgU"}');
+            // setObjectsVisibility('zQSMvUcphb1KDAI9gGSMPSJ+hT2pE1A9','cH87PAyGfgU',false);
+        }
+
+        window.clipPlane = () => {
+            if (activeTextMakrup) {
+                markupPlugin.removeById(activeTextMakrup.id);
+                viewer.tools.get(markupPluginNamespace.TextMarkupTool).
+                    add(activeTextMakrup.startPick, activeTextMakrup.endPick, "hello", activeTextMakrup.color);
+                activeTextMakrup = null;
+                viewer.activeTool = "selection";
+            }
+            else {
+                viewer.tools.textMarkup.getTextCallback = (markup) => {
+                    console.log("callbackkkkk");
+                    activeTextMakrup = markup;
+                    return "";
+                };
+
+                viewer.activeTool = "measurement";
+            }
+        }
+
+        
+        function getSelectedEntities() {
+            var selectedPromise = new Promise(async function (resolve, reject) {
+                var selectedEntities = [];
+                try {
+                    var selectedItems = viewer.selection;
+                    for (const modelId of selectedItems.keys()) {
+                        for (const id of selectedItems.get(modelId)) {
+                            var e = await getPersistentId(modelId, id);
+                            selectedEntities.push({ id: e, modelId: modelId });
+                        }
+                    }
+                }
+                catch (e) { }
+                resolve(selectedEntities);
+            });
+            selectedPromise.then((result) => {
+                console.log(JSON.stringify(result));
+            });
+        }
+        function setStateForEntities(entityInfoJson, state) {
+            var setStatePromise = new Promise(async function (resolve, reject) {
+                try {
+                    var entityInfo = JSON.parse(entityInfoJson);
+                    for (var entity of entityInfo) {
+                        var modelId = entity['modelId'];
+                        var entityIds = await getEntityIds(modelId, entity['id']);
+                        switch (state) {
+                            case "selected":
+                                viewer.selection.add(modelId, entityIds);
+                                break;
+                            case "none":
+                                var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                                model.setVisibility(false, entityIds);
+                                viewer.selection.subtract(modelId, entityIds);
+                                break;
+                            case "visible":
+                                var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                                model.setVisibility(true, entityIds);
+                                break;
+
+                        }
+                    }
+                    resolve('success');
+                }
+                catch (e) { reject(e); }
+            });
+            setStatePromise.then((result) => console.log(result));
+        }
+
+        async function showOnly(entityArrayJson) {
+            for (const id of modelIds) {
+                const model = viewer.getModel(id.name, trimbimModule.TrimbimModel);
+                await model.setVisibility(null, false);
+            }
+            await setStateForEntityArray(entityArrayJson, 'visible');
+        }
+
+        // async function showAll() {
+        //     for (const id of modelIds) {
+        //         const model = viewer.getModel(id, trimbimModule.TrimbimModel);
+        //         await model.setVisibility(null, true);
+        //     }
+        //     getVisibleEntities();
+        // }
+        // window.showAll = async()=>
+        // {
+        //     await showAll();
+        // }
+        function getVisibleEntities() {
+            let visibleEntitiesPromise = new Promise(async (resolve, reject) => {
+                let visibleIdSets = [];
+                try {
+                    for (const modelId of modelIds) {
+                        let entityIds = await getVisibleEntityIds(modelId, true);
+                        let globalIds = await getPersistentIds(modelId, entityIds);
+                        visibleIdSets.push({ modelId: modelId, ids: globalIds.map(idSet => idSet.id) });
+                    }
+                }
+                catch (e) { }
+                resolve(visibleIdSets);
+            });
+            visibleEntitiesPromise.then(result => console.log(result));
+        }
+
+        async function setStateForEntityArray(entityArrayJson, state) {
+            let setStatePromise = new Promise(async function (resolve, reject) {
+                try {
+                    let entityArray = JSON.parse(entityArrayJson);
+                    for (let entity of entityArray) {
+                        let modelId = entity['modelId'];
+                        let ids = entity["ids"];
+                        let model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                        let idRes = await getIdentifierResolver(modelId, 1.0);
+                        let entityIds = await viewhandler.getEntityIds(model, ids, idRes);
+                        switch (state) {
+                            case "selected":
+                                viewer.selection.add(modelId, entityIds);
+                                break;
+                            case "none":
+                                await model.setVisibility(entityIds, false);
+                                viewer.selection.subtract(modelId, entityIds);
+                                break;
+                            case "visible":
+                                await model.setVisibility(entityIds, true);
+                                break;
+
+                        }
+                    }
+                    resolve('success');
+                }
+                catch (e) { reject(e); }
+            });
+            setStatePromise.then((result) => console.log(result));
+        }
+        function getEntityInfo(entityJson) {
+            var entityInfoPromise = new Promise(async function (resolve, reject) {
+                var entityInfo = [];
+                try {
+                    var entity = JSON.parse(entityJson);
+                    var modelId = entity['modelId'];
+                    var model = viewer.getModel('cH87PAyGfgU.trb', trimbimModule.TrimbimModel);
+                    var entityIds = await getEntityIds(modelId, entity['id']);
+                    var info = await model.getEntities(entityIds[0]);
+                    entityInfo.push(...info.properties);
+                }
+                catch (e) { console.log(e); }
+                console.log("info" + info);
+                resolve(entityInfo);
+            });
+            entityInfoPromise.then((entityInfo) => {
+                var propertySets = [];
+                try {
+                    for (var category of entityInfo) {
+                        for (var property of category.properties) {
+                            if (property !== undefined) {
+                                var propertySet = [];
+                                propertySet.push((category.name ? category.name + '.' : '') + property.name);
+                                propertySet.push(property.value.toString());
+                                propertySet.push(property.type.toString());
+                                propertySets.push(propertySet);
+                            }
+                        }
+                    }
+                }
+                catch (e) { console.log(e); }
+                console.log(JSON.stringify(propertySets));
+            });
+        }
+        function getEntityTitle(entityJson) {
+            var entityInfoPromise = new Promise(async function (resolve, reject) {
+                var entityInfo = new Object;
+                try {
+                    var entity = JSON.parse(entityJson);
+                    var modelId = entity['modelId'];
+                    var model = viewer.getModel('cH87PAyGfgU.trb', trimbimModule.TrimbimModel);
+                    var entityIds = await getEntityIds(modelId, entity['id']);
+                    var info = await model.getEntities(entityIds[0]);
+                    entityInfo.entity = info.entity;
+                    entityInfo.product = info.product;
+                }
+                catch (e) { console.log(e); }
+                console.log("info" + entityInfo);
+                resolve(entityInfo);
+            });
+            entityInfoPromise.then((entityInfo) => {
+                var title = "";
+                try {
+                    if (entityInfo) {
+                        if (entityInfo.product) {
+                            title = entityInfo.product.name || entityInfo.product.objectType;
+                        }
+                        if (!title && entityInfo.entity) {
+                            title = entityInfo.entity.class;
+                        }
+                    }
+                }
+                catch (e) { console.log(e); }
+                console.log(title);
+            });
+        }
+        function getSelectedObjectsColors() {
+            var colorPromise = new Promise(async function (resolve, reject) {
+                var colorList = [];
+                try {
+                    var selectedItems = viewer.selection;
+                    for (const modelId of selectedItems.keys()) {
+                        var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                        for (var id of selectedItems.get(modelId)) {
+                            var material = await model.getMaterials([id]);
+                            if (material[0]) {
+                                var color = colorToThreeJS(material[0].color);
+                                var e = await getPersistentId(modelId, id);
+                                var colorArray = [color.r, color.g, color.b, material[0].opacity];
+                                var colorObj = { key: e, value: colorArray };
+                                colorList.push(colorObj);
+                            }
+                        }
+                    }
+                }
+                catch (e) {
+                    console.log(e);
+                }
+                resolve(colorList);
+            });
+            colorPromise.then((value) => {
+                console.log(value);
+            });
+        }
+        async function getSelectedObjectsColorsAsync() {
+            var colorList = [];
+            try {
+                var selectedItems = viewer.selection;
+                for (const modelId of selectedItems.keys()) {
+                    var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                    for (var id of selectedItems.get(modelId)) {
+                        var material = await model.getMaterials([id]);
+                        if (material[0]) {
+                            var color = colorToThreeJS(material[0].color);
+                            var e = await getPersistentId(modelId, id);
+                            var colorArray = [color.r, color.g, color.b, material[0].opacity];
+                            var colorObj = { key: e, value: colorArray };
+                            colorList.push(colorObj);
+                        }
+                    }
+                }
+            }
+            catch (e) {
+                console.log(e);
+            }
+            return colorList;
+        }
+        function colorToThreeJS(color) {
+            const c = color;
+            if (typeof color === "number" || typeof color === "string")
+                return new three.Color(color);
+            else if (c.r !== undefined && c.g !== undefined && c.b !== undefined)
+                return new three.Color(c.r, c.g, c.b);
+        }
+        function resetMaterial() {
+            var modelIds = trimbimPlugin.getModels();
+            for (const modelId of modelIds) {
+                var model = viewer.getModel(modelId.name, trimbimModule.TrimbimModel);
+                model.resetMaterial(viewer.selection.get(modelId.name));
+            }
+        }
+        function setSelectedObjectsTransparency(transparency) {
+            var selectedItems = viewer.selection;
+            for (const modelId of selectedItems.keys()) {
+                var model = viewer.getModel(modelId);
+                model.setMaterial({ opacity: transparency }, selectedItems.get(modelId));
+            }
+        }
+        async function setObjectsFullColor(entityColorJson) {
+            let entityArray = JSON.parse(entityColorJson);
+            for (let entity of entityArray) {
+                let modelId = entity['modelId'];
+                let model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                let idRes = await getIdentifierResolver(modelId, 1.0);
+                let colors = entity["colors"];
+                let groupedColors = groupBy(colors, 'color');
+                for (let colorInfo of colors) {
+                    let id = colorInfo["id"];
+                    let color = colorInfo["color"];
+                    let entityIds = await viewhandler.getEntityIds(model, [id], idRes);
+                    var colorParam = new Object;
+                    colorParam['color'] = { r: color["r"], g: color["g"], b: color["b"] };
+                    colorParam['opacity'] = color["a"];
+                    model.setMaterial(entityIds, colorParam);
+                }
+            }
+        }
+        async function setColorForAllObjects(colorJson) {
+            let color = JSON.parse(colorJson);
+            for (let modelId of modelIds) {
+                let model = viewer.getModel(modelId, trimbimModule.TrimbimModel); var colorParam = new Object;
+                colorParam['color'] = { r: color["r"], g: color["g"], b: color["b"] };
+                colorParam['opacity'] = color["a"];
+                model.setMaterial(null, colorParam);
+            }
+        }
+        async function setSelectedObjectsColor(color) {
+            var selectedItems = viewer.selection;
+            for (const modelId of selectedItems.keys()) {
+                var model = viewer.getModel(modelId);
+                for (var id of selectedItems.get(modelId)) {
+                    var material = await model.getMaterials([id]);
+                    if (material[0])
+                        var objOpacity = material[0].opacity;
+                    var colorParam = new Object;
+                    colorParam['color'] = color;
+                    if (objOpacity)
+                        colorParam['opacity'] = objOpacity;
+                    model.setMaterial([id], colorParam);
+                }
+            }
+        }
+
+        function setAllObjectsVisibility(isVisible) {
+            var modelIds = trimbimPlugin.getModels();
+            for (const id of modelIds) {
+                const model = viewer.getModel(id.name);
+                model.setVisibility(isVisible);
+                //model.resetMaterial();
+            }
+        }
+
+        async function setSelectedObjectsVisibility(isVisible) {
+            var selectedItems = viewer.selection;
+            for (const modelId of selectedItems.keys()) {
+                var model = viewer.getModel(modelId);
+                
+                model.getEntities(selectedItems.get(modelId)).then((info) => {
+                    console.log(info);
+                });
+                model.getProperties(selectedItems.get(modelId)).then((info) => {
+                    console.log("prop",info);
+                });
+                model.setVisibility(selectedItems.get(modelId), isVisible);
+                if (!isVisible)
+                    viewer.selection.subtract(modelId, selectedItems.get(modelId));
+
+                viewer.selection.subtract(modelId, selectedItems.get(modelId));
+            }
+        }
+        async function showOnlySearch()
+        {
+            for (const model of viewer.plugins.trimbim.getModels())
+                await model.setVisibility(undefined, false);
+
+            for (const modelId of viewer.selection.keys()) {
+                let model = viewer.getModel(modelId);
+                const entityIds = [...viewer.selection.get(modelId)];
+                console.log("-------------");
+                console.log(entityIds);
+                console.log("-------------")
+                entityIds.push(...await model.getHierarchyParents(viewer.selection.get(modelId), undefined, true));
+                entityIds.push(...await model.getHierarchyChildren(viewer.selection.get(modelId), true));
+                await model.setVisibility(entityIds, true);
+            }
+        };
+
+        async function searchByKeyValue()
+        {
+            var modelIds = trimbimPlugin.getModels();
+            var selectedItems = viewer.selection;
+            var key = "'" + document.getElementById("key").value + "'";
+            var value = document.getElementById("value").value;
+            console.log("key", key);
+            console.log("value", value);
+
+            const dfdfd = ("'" + key + "'");
+            //showOnlySearch();
+
+
+            // for (const id of modelIds) {
+            //     console.log("name", id.name);
+
+            //     const model = viewer.getModel(id.name);
+            //     console.log("model", model);
+            //     const temp = await model.findEntitiesByProperty(undefined, /BREP/);
+            //     const temp1 = await model.findEntitiesByLayer("BREP");
+            //     console.log("temp", temp);
+            //     console.log("temp1", temp1);
+            //     console.log("modelIds", modelIds);
+            //     viewer.selection.add(id.name, temp1);
+            //     showOnlySearch();
+            //     viewer.selection.subtract(id, selectedItems.get(id));
+            // }
+            //showOnlySearch();
+            ChatByKV(key,value);
+      
+        }
+        async function setSearchItemsVisible(skey, svalue) {
+            let entityIds = [];
+            console.log("setSearchItemsVisible");
+            console.log("skey",skey);
+            console.log("svalue",svalue);
+            for (let modelId of modelIds) {
+                const model = viewer.getModel(modelId);
+                const entityIdForModel = await model.findEntitiesByProperty(skey, svalue);
+                console.log("entityIdForModel", entityIdForModel);
+                const entityIdForModel1 = await model.findEntitiesByLayer(skey, svalue);
+                console.log("entityIdForModel1", entityIdForModel);
+
+                if (entityIdForModel.length > 0) {
+                    viewer.selection.add(modelId, entityIdForModel);
+                    entityIds.push({ modelId: modelId, entityIdForModel: entityIdForModel });
+                }
+            }
+            if (entityIds.length > 0) {
+                await showOnlySelected();
+                for (let entForModel of entityIds) {
+                    viewer.selection.subtract(entForModel.modelId, entForModel.entityIdForModel);
+                }
+            }
+            else {
+                setAllObjectsVisibility(true);
+            }
+            return entityIds;
+        }
+        async function ChatByKV(searchKey, searchValue) 
+        {
+
+            let searchPromise = new Promise(async function (resolve, reject) {
+                try {
+
+                    //setAllObjectsVisibility(false);
+                    var skey = new RegExp(searchKey, 'gi');
+
+                    if (isNaN(Number(searchValue))) {
+                        var svalue = new RegExp(searchValue.length > 0 ? searchValue : "[]", 'gi');
+                        const entityIds = await setSearchItemsVisible(skey, svalue);
+                        resolve(entityIds);
+
+                    }
+                    else {
+                        const parsedSearchValue = parseFloat(searchValue);
+                        const entityIds = await setSearchItemsVisible(skey, parsedSearchValue);
+                        resolve(entityIds);
+
+                    }
+                }
+                catch (e) { reject(e); }
+            });
+            searchPromise.then(entityIds => {
+                console.log(JSON.stringify(entityIds));
+            });
+
+        }
+
+        function setObjectsVisibility(isVisible) {
+            var promise = getEntityIds("cH87PAyGfgU", e);
+            promise.then((entityIds) => {
+                var model = viewer.getModel(modelId);
+                // model.setVisibility(isVisible, entityIds);
+                model.setVisibility(null, isVisible);
+
+                if (!isVisible)
+                    viewer.selection.subtract(modelId, entityIds);
+            });
+        }
+
+        // async function setAllObjectsVisibility(isVisible){
+        //     // for(const id of modelIds){
+        //         const model = viewer.getModel("cH87PAyGfgU", trimbimModule.TrimbimModel);
+        //         await model.setVisibility(null, isVisible);
+        //         if (isVisible) {
+        //             model.visible = true;
+        //             // viewhandler.handleGridsVisibility(model, true);        
+		// 		}
+        //     // }
+        // }
+        window.Unload = async () =>{
+            await unLoadModels('cH87PAyGfgU');
+        }
+        window.Load = async () =>{
+            await loadModel();
+        }
+        window.lookAround = () => {
+            var orbitTool = viewer.tools.orbit;
+            var panTool = viewer.tools.pan;
+            var flyTool = viewer.tools.fly;
+            flyTool.enabled = true;
+            flyTool.mouseButton = MouseButton.left;
+            orbitTool.enabled = false;
+            panTool.enabled = false;
+        }
+
+        async function getPersistentId(modelId, entityId) {
+            var globalId;
+            if (trimbimPlugin && modelId) {
+                const model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                if (model) {
+                    var entityIds = [entityId];
+                    const entities = await model.getEntities(entityIds);
+                    const boundingBoxes = await model.getUntransformedBoundingBoxes(entityIds);
+
+                    const entity = entities[0];
+
+                    try {
+                        var identifier = identifierBuilder.tryGetPersistentIdentifier(entity);
+
+                    } catch { }
+                    try {
+                        if (identifier === undefined) {
+                            identifier = identifierBuilder.tryGetNonPersistentIdentifier(entity, boundingBoxes[0]);
+                        }
+                    }
+                    catch { }
+                    if (identifier) {
+                        globalId = identifier;
+                    }
+                    else {
+                        globalId = '';
+                        console.log(`Unable to get persistent identifier for the following entitiIds: ${entity.id.toString()}`);
+                    }
+                }
+            }
+
+            return globalId;
+        };
+
+        async function getEntityIds(modelId, e) {
+            var entityIds = [];
+            var identifierResolver = await getIdentifierResolver(modelId, 1.0);
+            if (modelId && identifierResolvers) {
+                // persistent ID
+                const entityId = identifierResolver.tryGetEntityFromPersistentIdentifier(e);
+                if (entityId !== undefined) {
+                    entityIds.push(entityId);
+                }
+                else {
+                    // non-persistent ID
+                    const nonPersistentEntityIdIDs = identifierResolver.tryGetEntityFromNonPersistentIdentifier(e);
+                    if (nonPersistentEntityIdIDs.length) {
+                        entityIds.push(...nonPersistentEntityIdIDs);
+
+                        if (nonPersistentEntityIdIDs.length > 1) {
+                            console.log(`Multiple non persistent IDs ([${entityIds.join(", ")}]) were found for identifier: ${e}`);
+                        }
+
+                    } else {
+                        console.log(`"getEntityIds(): fallback option reached with the following objectIds: [${sourceIds.join(" | ")}]`);
+                        // Putting back the this fallback option for now.
+                        // TODO: remove temporary fallback option to support the old way.
+                        var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                        return model.guidsToEntityIds(sourceIds);
+                    }
+                }
+            }
+            return entityIds;
+        };
+
+        async function getAllEntityIds(modelId, persistentIds) {
+            var entityIds = [];
+            var identifierResolver = await getIdentifierResolver(modelId, 1.0);
+            if (modelId && identifierResolvers) {
+                for (const persistentId of persistentIds) {
+                    // persistent ID
+                    const entityId = identifierResolver.tryGetEntityFromPersistentIdentifier(persistentId);
+                    if (entityId !== undefined) {
+                        entityIds.push(entityId);
+                    }
+                    else {
+                        // non-persistent ID
+                        const nonPersistentEntityIdIDs = identifierResolver.tryGetEntityFromNonPersistentIdentifier(persistentId);
+                        if (nonPersistentEntityIdIDs.length) {
+                            entityIds.push(...nonPersistentEntityIdIDs);
+
+                            if (nonPersistentEntityIdIDs.length > 1) {
+                                console.log(`Multiple non persistent IDs ([${entityIds.join(", ")}]) were found for identifier: ${persistentId}`);
+                            }
+                        }
+                    }
+                }
+
+            }
+            else {
+                console.log(`"getEntityIds(): fallback option reached with the following objectIds: [${sourceIds.join(" | ")}]`);
+                // Putting back the this fallback option for now.
+                // TODO: remove temporary fallback option to support the old way.
+                var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                return model.guidsToEntityIds(persistentIds);
+            }
+            return entityIds;
+        };
+
+        const MouseButton = {
+            left: 0,
+            middle: 1,
+            right: 2
+        }
+        async function getIdentifierResolver(id, modelScaling) {
+            var modelId = id;
+            if (id.toLowerCase().endsWith(".trb"))
+                modelId = id.split(".trb")[0];
+            if (!identifierResolvers.has(modelId)) {
+                const model = viewer.getModel(id, trimbimModule.TrimbimModel);
+                const entityIds = (await model.query({ find: {} })).output.find.entityIds;
+                const entities = await model.getEntities(entityIds);
+                const boundingBoxes = await model.getUntransformedBoundingBoxes(entityIds);
+                // MVC uses this value too, thus it should work for most models.
+                const tolerance = 1e-3;
+                var scale = 1.0;
+                const idRes = new connectIdentifier.ConnectIdentifierResolver();
+                idRes.addEntities(entities, boundingBoxes, tolerance, scale);
+                identifierResolvers.set(modelId, idRes);
+            }
+            return Promise.resolve(identifierResolvers.get(modelId));
+        };
+
+
+        /**
+         * Returns a transformation matrix.
+         * @param x The X axis.
+         * @param y The Y axis.
+         * @param z The Z axis.
+         * @param translate The translation vector.
+         */
+        function createTransform(x, y, z, translate) {
+            return {
+                elements: [
+                    x.x,
+                    x.y,
+                    x.z,
+                    0, // column-major order
+                    y.x,
+                    y.y,
+                    y.z,
+                    0,
+                    z.x,
+                    z.y,
+                    z.z,
+                    0,
+                    translate.x,
+                    translate.y,
+                    translate.z,
+                    1,
+                ],
+            };
+        }
+        async function unLoadModels(fileId) {
+            await viewer.unload(fileId, { fitToView: false });
+            const index = modelIds.indexOf(fileId);
+            if (index > -1) {
+                modelIds.splice(index, 1);
+            }
+            Object.keys(identifierResolvers).forEach(function (key) {
+                if (key == fileId) delete identifierResolvers[key];
+            });
+            let map = new Map();
+
+            map.set('1', 'str1');   // a string key
+            map.set(1, 'num1');     // a numeric key
+            map.set(true, 'bool1');
+            var relationsJson = JSON.parse(relationJson);
+            for (var relation of relationsJson) {
+                map.set(relation.versionId, relation.modelId);
+            }
+		}
+
+        async function loadModel()
+        {
+            // console.log("------------- Load Model ---------------");
+
+            await viewer.load("./IFCModel.trb",{modelId : 'cH87PAyGfgU' });
+            modelIds.push('cH87PAyGfgU');
+
+            //await viewer.load("./AssemblyModel.trb", { modelId: 'cH87PAyGfgU' });//Full_structural
+            //modelIds.push('cH87PAyGfgU');
+            // console.log(viewer);
+            var res1 = await getIdentifierResolver('cH87PAyGfgU.trb', 1.0);
+        }
+        async function Open3DViewer() {
+            var param = new Object;
+            param['modelId'] = 'aavvv';
+            // '/storage/emulated/0/com.trimble.buildings.connect/Trimble Connect/5eccb26d-6c38-4a1e-9aaf-b63839804818/zZJnkWVe1do/.files/e312bb417130fc7532fa468f724e4b68.trb',{transform: [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,],modelId : 'cH87PAyGfgU' }
+            await loadModel();
+            //await viewer.load("./IFCModel.trb",{modelId : 'ifcModel' });
+            var res1 = await getIdentifierResolver('cH87PAyGfgU.trb', 1.0);
+            // var res2 = await getIdentifierResolver('cH87PAyGfgU.trb', 1.0);
+            // var entityId = await getEntityIds('cH87PAyGfgU.trb', "1KBfeK004Ge34qCJ8pD30o");
+            //viewhandler.addObjectLinks('cH87PAyGfgU.trb', [{ icon: "./icon.png", entityId: entityId[0] }, { icon: "./icon.png", entityId: 13234, iconId: 13234 }]);
+            /*//alert(testfielpath);
+            //document.getElementById("trbpath").value = testfielpath;
+            //trbfilepath = document.getElementById("trbpath").value;
+            if (trbfilepath == 'i') {
+                //alert('i');
+                viewer.load('file:///storage/emulated/0/Download/Full_structural.trb');
+            }
+            else {
+                trbfilepath = 'file://' + trbfilepath;
+                //alert('trbfilepath : ' + trbfilepath);
+                viewer.load(trbfilepath);
+            }*/
+        }
+
+
+        window.selectTool = (tool) => {
+            viewer.activeTool = tool;
+        };
+
+        window.setVisibility = async (visible) => {
+            for (var modelId of viewer.selection.keys()) {
+                await viewer.plugins.trimbim.setVisibility({
+                    modelId: modelId,
+                    entityIds: viewer.selection.get(modelId),
+                    visible: visible
+                });
+            }
+        };
+
+        window.showOnlySelected = async () => {
+            await viewer.plugins.trimbim.setVisibility({ visible: false });
+            await setVisibility(true);
+        };
+
+        window.resetVisibility = () => {
+            viewer.plugins.trimbim.resetVisibility();
+        };
+
+        window.setMaterial = () => {
+            for (var modelId of viewer.selection.keys()) {
+                viewer.plugins.trimbim.setMaterial({
+                    modelId: modelId,
+                    entityIds: viewer.selection.get(modelId),
+                    material: { color: "#ff0000" }
+                });
+            }
+        };
+
+        window.resetMaterial = () => {
+            viewer.plugins.trimbim.resetMaterial();
+        };
+
+        async function getPersistentIds(modelId, entityIds) {
+            var entityArray = new Array();
+            if (viewer && modelId) {
+                const model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+                if (model) {
+                    const entities = await model.getEntities(entityIds);
+                    const boundingBoxes = await model.getUntransformedBoundingBoxes(entityIds);
+
+                    for (var entity of entities) {
+                        try {
+                            var identifier = identifierBuilder.tryGetPersistentIdentifier(entity);
+
+                        } catch (e) { }
+                        try {
+                            if (identifier === undefined) {
+                                identifier = identifierBuilder.tryGetNonPersistentIdentifier(entity, boundingBoxes[0]);
+                            }
+                        }
+                        catch (e) { }
+                        if (identifier) {
+                            entityArray.push({ id: identifier, modelId: modelId });
+                        }
+                        else {
+                            console.log(`Unable to get persistent identifier for the following entitiIds: ${entity.id.toString()}`);
+                        }
+                    }
+                }
+            }
+            return entityArray;
+        };
+        function invokeCSCode(data) {
+            try {
+                //log("Sending Data:" + data);
+                var testfielpath = invokeCSharpAction(data);
+                alert(testfielpath);
+                // log("Receiving Data:" + filepath);
+            }
+            catch (err) {
+                //log(err);
+            }
+        }
+
+        async function updateModelVisibility(modelId,isVisible)
+		{
+			var model = viewer.getModel(modelId, trimbimModule.TrimbimModel);
+            await model.setVisibility(null,isVisible);			
+			if(!isVisible)
+			{
+                var entityIds = viewer.selection.get(modelId);
+                viewer.selection.subtract(modelId,entityIds);
+			}
+		}
+        const getParsePickObject = pickObj => {
+            switch (pickObj.type) {
+                case "point": {
+                    return {
+                        pickType: "Point",
+                        position: convertConnectPointToViewerPoint(
+                            pickObj.positionX,
+                            pickObj.positionY,
+                            pickObj.positionZ
+                        )
+                    };
+                }
+                case "lineSegment": {
+                    return {
+                        pickType: "Edge",
+                        start: convertConnectPointToViewerPoint(
+                            pickObj.positionX,
+                            pickObj.positionY,
+                            pickObj.positionZ
+                        ),
+                        end: convertConnectPointToViewerPoint(
+                            pickObj.position2X,
+                            pickObj.position2Y,
+                            pickObj.position2Z
+                        )
+                    };
+                }
+                case "plane": {
+                    return {
+                        pickType: "Plane",
+                        plane: {
+                            normal: {
+                                x: pickObj.directionX,
+                                y: pickObj.directionY,
+                                z: pickObj.directionZ
+                            },
+                            coplanarPoint: convertConnectPointToViewerPoint(
+                                pickObj.positionX,
+                                pickObj.positionY,
+                                pickObj.positionZ
+                            )
+                        }
+                    };
+                }
+            }
+        };
+
+        const convertMeasurement = measurement => {
+            return {
+                type: "measurement",
+                start: getParsePickObject(measurement.start),
+                end: getParsePickObject(measurement.end),
+                color: measurement.color
+            };
+        };
+
+        function convertConnectPointToViewerPoint(x, y, z) {
+            return { x: x / 1000, y: y / 1000, z: z / 1000 };
+        }
+
+        function selectTool(tool) {
+            viewer.activeTool = tool;
+        }
+
+        function changeColor() {
+            let color = {
+                r: getRandomArbitrary(),
+                g: getRandomArbitrary(),
+                b: getRandomArbitrary(),
+                a: 1
+            };
+            viewer.plugins.markups.colorSelectedMarkups(color);
+        }
+
+        function getRandomArbitrary(min = 0, max = 255) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function groupBy(xs, key) {
+            return xs.reduce(function (rv, x) {
+                (rv[x[key]] = rv[x[key]] || []).push(x);
+                return rv;
+            }, {});
+        }
+
+
+        window.removeAll = () => {
+            var presetType = 'top';
+            setViewPreset(presetType);
+
+        }
+        function setViewPreset(presetType) {
+            webGlViewer.fitToView({ viewPreset: presetType });
+        }
+        function loadMeasurements() {
+
+            const req = new XMLHttpRequest();
+            req.onload = function () {
+                const jsonresponse = this.response;//req.json;//req.responseText;
+                //alert('json parsed');
+                var jsondata = JSON.parse(jsonresponse);
+                jsondata.map(measurement => convertMeasurement(measurement)).forEach(measurement => viewer.plugins.markups.add(measurement));
+            };
+            req.open('GET', 'measurements.json');
+            req.send();
+
+
+            /*  fetch('measurements.json')
+            .then((response) => {
+                response.json().then((data) => {
+                   alert('json parsed');
+                });
+            })
+            .catch((err) => { alert("Error : " + err);});*/
+        }
+                    //function log(str) {
+                    //    $('#result').text($('#result').text() + " * " + str);
+                    //}
+
+    </script>
+</body>
+
+</html>

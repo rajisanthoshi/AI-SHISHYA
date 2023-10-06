@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>webgl-viewer demo</title>
+    <meta charset="utf-8">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <script src="system-production.js"></script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+    <style>
+        .thumb {
+            height: 75px;
+            border: 1px solid #000;
+            margin: 10px 5px 0 0;
+        }
+
+        #progress_bar {
+            margin: 10px 0;
+            padding: 3px;
+            border: 1px solid #000;
+            font-size: 14px;
+            clear: both;
+            opacity: 0;
+            -moz-transition: opacity 1s linear;
+            -o-transition: opacity 1s linear;
+            -webkit-transition: opacity 1s linear;
+        }
+
+            #progress_bar.loading {
+                opacity: 1.0;
+            }
+
+            #progress_bar .percent {
+                background-color: #99ccff;
+                height: auto;
+                width: 0;
+            }
+    </style>
+
+    <script>
+
+        let viewer;
+        var trbfilepath = '';
+        Promise.all([System.import("WebglViewer.js"), System.import("TrimbimPlugin.js"), System.import("MarkupPlugin.js")]).then((modules) => {
+
+            viewer = new modules[0].WebglViewer().addPlugin(new modules[1].TrimbimPlugin()).addPlugin(new modules[2].MarkupPlugin());
+
+            document.body.appendChild(viewer);
+            //WebGlAdapter.onViewerLoaded();
+            loadModels('./Full_structural.trb',{locationX: 0,locationY : 0,locationZ : 0,axisX : 0,axisY: 0,axisZ : 1,refDirectionX : 1,refDirectionY : 0,refDirectionZ : 0,scale : 1, modelId : 'KkIKc8T6htU' });
+        });
+
+        /*function loadModels(csresponse,alignment) {
+            var filepaths = csresponse.split(",");
+            if (filepaths.length > 0) {
+                filepaths.forEach(function (filepath) {
+                    var trbfilepath = 'file://' + filepath;
+                    viewer.load(trbfilepath);
+                });
+            }
+            else if (filepaths.length > 0) {
+                viewer.load(filepaths);
+            }
+        }*/
+
+		async function loadModels(csresponse,payload) {
+            console.log(payload.modelId);
+                await viewer.load(csresponse,{modelId:"asdddd"});
+                console.log(viewer.selection.keys());
+                await viewer.plugins.trimbim.setVisibility({modelId:"asdddd",visible:true});
+
+        }
+
+        window.selectTool = (tool) => {
+            viewer.activeTool = tool;
+        };
+
+        window.setVisibility = async (visible) => {
+            for (var modelId of viewer.selection.keys()) {
+                await viewer.plugins.trimbim.setVisibility({
+                    modelId: modelId,
+                    entityIds: viewer.selection.get(modelId),
+                    visible: visible
+                });
+            }
+        };
+
+        window.showOnlySelected = async () => {
+            await viewer.plugins.trimbim.setVisibility({ visible: false });
+            await setVisibility(true);
+        };
+
+        window.resetVisibility = () => {
+            viewer.plugins.trimbim.resetVisibility();
+        };
+
+        window.setMaterial = () => {
+            for (var modelId of viewer.selection.keys()) {
+                viewer.plugins.trimbim.setMaterial({
+                    modelId: modelId,
+                    entityIds: viewer.selection.get(modelId),
+                    material: { color: "#ff0000" }
+                });
+            }
+        };
+
+        window.resetMaterial = () => {
+            viewer.plugins.trimbim.resetMaterial();
+        };
+
+        function invokeCSCode(data) {
+            try {
+                //log("Sending Data:" + data);
+                var testfielpath = invokeCSharpAction(data);
+                alert(testfielpath);
+                // log("Receiving Data:" + filepath);
+            }
+            catch (err) {
+                //log(err);
+            }
+        }
+
+        const getParsePickObject = pickObj => {
+            switch (pickObj.type) {
+                case "point": {
+                    return {
+                        pickType: "Point",
+                        position: convertConnectPointToViewerPoint(
+                            pickObj.positionX,
+                            pickObj.positionY,
+                            pickObj.positionZ
+                        )
+                    };
+                }
+                case "lineSegment": {
+                    return {
+                        pickType: "Edge",
+                        start: convertConnectPointToViewerPoint(
+                            pickObj.positionX,
+                            pickObj.positionY,
+                            pickObj.positionZ
+                        ),
+                        end: convertConnectPointToViewerPoint(
+                            pickObj.position2X,
+                            pickObj.position2Y,
+                            pickObj.position2Z
+                        )
+                    };
+                }
+                case "plane": {
+                    return {
+                        pickType: "Plane",
+                        plane: {
+                            normal: {
+                                x: pickObj.directionX,
+                                y: pickObj.directionY,
+                                z: pickObj.directionZ
+                            },
+                            coplanarPoint: convertConnectPointToViewerPoint(
+                                pickObj.positionX,
+                                pickObj.positionY,
+                                pickObj.positionZ
+                            )
+                        }
+                    };
+                }
+            }
+        };
+
+        const convertMeasurement = measurement => {
+            return {
+                type: "measurement",
+                start: getParsePickObject(measurement.start),
+                end: getParsePickObject(measurement.end),
+                color: measurement.color
+            };
+        };
+
+        function convertConnectPointToViewerPoint(x, y, z) {
+            return { x: x / 1000, y: y / 1000, z: z / 1000 };
+        }
+
+        function selectTool(tool) {
+            viewer.activeTool = tool;
+        }
+
+        function changeColor() {
+            let color = {
+                r: getRandomArbitrary(),
+                g: getRandomArbitrary(),
+                b: getRandomArbitrary(),
+                a: 1
+            };
+            viewer.plugins.markups.colorSelectedMarkups(color);
+        }
+
+        function getRandomArbitrary(min = 0, max = 255) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function removeAll() {
+            viewer.plugins.markups.clear();
+        }
+
+        function loadMeasurements() {
+
+            const req = new XMLHttpRequest();
+            req.onload = function () {
+                const jsonresponse = this.response;//req.json;//req.responseText;
+                //alert('json parsed');
+                var jsondata = JSON.parse(jsonresponse);
+                jsondata.map(measurement => convertMeasurement(measurement)).forEach(measurement => viewer.plugins.markups.add(measurement));
+            };
+            req.open('GET', 'measurements.json');
+            req.send();
+
+
+            /*  fetch('measurements.json')
+            .then((response) => {
+                response.json().then((data) => {
+                   alert('json parsed');
+                });
+            })
+            .catch((err) => { alert("Error : " + err);});*/
+        }
+                    //function log(str) {
+                    //    $('#result').text($('#result').text() + " * " + str);
+                    //}
+    </script>
+</body>
+    </html>

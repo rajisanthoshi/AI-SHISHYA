@@ -1,0 +1,86 @@
+{
+	"id": "zc2RNvsowyw",
+	"createdOn": "2020-02-05T10:25:52+0000",
+	"modifiedOn": "2020-02-05T10:25:52+0000",
+	"modifiedBy": {
+		"status": "ACTIVE",
+		"id": "5KsLDMG38O0",
+		"tiduuid": "cae2cef6-4de1-4de3-89aa-9d956aac3267",
+		"email": "geethathangam_kamaraj@trimble.com",
+		"firstName": "Geetha Thangam",
+		"lastName": "Kamaraj"
+	},
+	"createdBy": {
+		"status": "ACTIVE",
+		"id": "5KsLDMG38O0",
+		"tiduuid": "cae2cef6-4de1-4de3-89aa-9d956aac3267",
+		"email": "geethathangam_kamaraj@trimble.com",
+		"firstName": "Geetha Thangam",
+		"lastName": "Kamaraj"
+	},
+	"name": "ViewLaunch",
+	"projectId": "0cM3j4UWoOk",
+	"models": ["KkIKc8T6htU"],
+	"files": ["KkIKc8T6htU"],
+	"thumbnail": "https://app.connect.trimble.com/tc/api/2.0/files/thumb?id=zc2RNvsowyw&fc=REPRESENTATION&projectId=0cM3j4UWoOk&modified=1580898352439",
+	"assignees": [],
+	"camera": {
+		"targetX": 80444.83059246422,
+		"targetY": -53527.19881217463,
+		"targetZ": 88127.70985333431,
+		"distance": 1000.0,
+		"pitch": 0.9689307040309784,
+		"yaw": 0.5363839965509211,
+		"viewAngle": 60.0,
+		"viewScale": 100.0,
+		"projectionType": "perspective"
+	},
+	"sectionPlanes": [],
+	"markups": [],
+	"presentation": {
+		"ghost": false,
+		"transparent": false,
+		"wireframe": false,
+		"isNewEnabled": true,
+		"isPendingEnabled": false,
+		"isCriticalEnabled": false,
+		"isResolvedEnabled": false,
+		"isIgnoredEnabled": false,
+		"isNotesEnabled": true,
+		"isDocumentsEnabled": false,
+		"transparencyLevel": 100,
+		"elementTypes": [],
+		"elements": [{
+				"sourceId": "1KBfeK005uU34qCJ8pD30o",
+				"versionId": "KkIKc8T6htU",
+				"state": 4,
+				"isRecursive": false,
+				"priority": 0
+			}, {
+				"sourceId": "1KBfeK003nYZ4qCJ8pD30o",
+				"versionId": "KkIKc8T6htU",
+				"state": 4,
+				"isRecursive": false,
+				"priority": 0
+			}, {
+				"sourceId": "1KBfeK003na34qCJ8pD30o",
+				"versionId": "KkIKc8T6htU",
+				"state": 4,
+				"isRecursive": false,
+				"priority": 0
+			}, {
+				"sourceId": "1KBfeK003nX34qCJ8pD30o",
+				"versionId": "KkIKc8T6htU",
+				"state": 4,
+				"isRecursive": false,
+				"priority": 0
+			}, {
+				"sourceId": "1KBfeK004Ge34qCJ8pD30o",
+				"versionId": "KkIKc8T6htU",
+				"state": 5,
+				"isRecursive": false,
+				"priority": 0
+			}
+		]
+	}
+}

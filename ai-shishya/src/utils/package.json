@@ -1,0 +1,12 @@
+{
+    "name": "TCM",
+    "version": "1.0.0",
+    "devDependencies": {
+      "@technology/web3d": "latest",
+      "@technology/web3d-plugin-trimbim": "latest",
+      "@technology/web3d-plugin-markup": "latest",
+      "@technology/web3d-plugin-icons": "latest"
+      
+
+    }
+  }
