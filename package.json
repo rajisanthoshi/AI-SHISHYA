@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@trimble-oss/modus-web-components": "^0.3.1"
+  }
+}

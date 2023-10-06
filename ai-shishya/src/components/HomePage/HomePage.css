@@ -1,0 +1,9 @@
+.textbox{
+    display: flex;
+}
+.fullpage{
+    display: flex;
+}
+.model-dropdown{
+    display: block;
+}
