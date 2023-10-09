@@ -40,10 +40,8 @@ export class HomePage extends React.Component{
                            <modus-text-input placeholder="Ask AI Shishya"></modus-text-input>
                            <modus-button color="tertiary">Ask</modus-button>
                         </div>
-                        <div className='model-container'>
-                           <iframe>
-
-                           </iframe>
+                        <div className='model-container' id="model-container">
+                           
                         </div>
                     </div>
                 </div>
